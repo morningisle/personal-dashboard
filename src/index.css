@@ -1,0 +1,207 @@
+@import "tailwindcss";
+
+/* iPad 9代横屏断点：1080×810 CSS pixels */
+@custom-variant ipad-landscape (& (min-width: 900px) and (min-height: 600px) and (orientation: landscape));
+
+@theme {
+  --color-clay-pink: #f8b4d9;
+  --color-clay-pink-light: #fce7f3;
+  --color-clay-pink-dark: #ec4899;
+  --color-clay-cream: #fef3c7;
+  --color-clay-cream-dark: #fcd34d;
+  --color-clay-mint: #a7f3d0;
+  --color-clay-mint-dark: #34d399;
+  --color-clay-purple: #c4b5fd;
+  --color-clay-purple-dark: #8b5cf6;
+  --color-clay-orange: #fed7aa;
+  --color-clay-orange-dark: #f97316;
+  --color-clay-blue: #bfdbfe;
+  --color-clay-blue-dark: #3b82f6;
+  --font-family-display: 'Nunito', 'Noto Sans SC', sans-serif;
+  --font-family-body: 'Noto Sans SC', 'Nunito', sans-serif;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Noto Sans SC', 'Nunito', system-ui, sans-serif;
+  background: linear-gradient(135deg, #fdf2f8 0%, #fef3c7 50%, #ecfdf5 100%);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Claymorphism shadow utilities */
+.clay-card {
+  border-radius: 28px;
+  box-shadow:
+    8px 8px 16px rgba(0,0,0,0.08),
+    inset 4px 4px 8px rgba(255,255,255,0.6),
+    inset -2px -2px 4px rgba(0,0,0,0.08);
+}
+
+.mood-check-card {
+  border-bottom-right-radius: 0 !important;
+}
+
+.clay-card-hover:hover {
+  box-shadow:
+    12px 12px 24px rgba(0,0,0,0.1),
+    inset 6px 6px 12px rgba(255,255,255,0.7),
+    inset -4px -4px 8px rgba(0,0,0,0.05);
+  transform: translateY(-2px);
+}
+
+.clay-btn {
+  border-radius: 24px;
+  box-shadow:
+    8px 8px 16px rgba(0,0,0,0.08),
+    -4px -4px 12px rgba(255,255,255,0.8),
+    inset 4px 4px 8px rgba(255,255,255,0.4),
+    inset -2px -2px 4px rgba(0,0,0,0.08);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.clay-btn:active {
+  transform: scaleX(1.05) scaleY(0.9);
+  box-shadow:
+    2px 2px 4px rgba(0,0,0,0.05),
+    inset 8px 8px 16px rgba(0,0,0,0.15),
+    inset -4px -4px 8px rgba(255,255,255,0.5);
+}
+
+.clay-input {
+  border-radius: 16px;
+  box-shadow:
+    inset 4px 4px 8px rgba(0,0,0,0.1),
+    inset -4px -4px 8px rgba(255,255,255,0.9);
+  border: none;
+  outline: none;
+}
+
+.clay-tab-active {
+  box-shadow:
+    4px 4px 12px rgba(0,0,0,0.1),
+    inset 2px 2px 4px rgba(255,255,255,0.6),
+    inset -1px -1px 2px rgba(0,0,0,0.05);
+}
+
+.clay-glow {
+  box-shadow:
+    0 0 20px rgba(248, 180, 217, 0.4),
+    8px 8px 16px rgba(0,0,0,0.08),
+    inset 4px 4px 8px rgba(255,255,255,0.6);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(248, 180, 217, 0.5);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Bouncy animation */
+@keyframes bounce-clay {
+  0% { transform: scale(1); }
+  50% { transform: scaleX(1.05) scaleY(0.95); }
+  100% { transform: scale(1); }
+}
+
+.animate-bounce-clay {
+  animation: bounce-clay 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* Drawer overlay */
+.drawer-overlay {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+}
+
+/* Progress bar */
+.clay-progress {
+  border-radius: 99px;
+  box-shadow: inset 2px 2px 4px rgba(0,0,0,0.1), inset -2px -2px 4px rgba(255,255,255,0.8);
+  overflow: hidden;
+}
+
+.clay-progress-bar {
+  border-radius: 99px;
+  transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* AI Chat Bubbles */
+.chat-bubble-ai {
+  border-radius: 18px 18px 18px 4px;
+  background: white;
+  box-shadow: 2px 2px 8px rgba(0,0,0,0.06);
+}
+
+.chat-bubble-user {
+  border-radius: 18px 18px 4px 18px;
+  background: linear-gradient(135deg, #dbeafe, #e0e7ff);
+}
+
+/* AI loading dots */
+@keyframes ai-dots {
+  0%, 20% { opacity: 0.3; }
+  50% { opacity: 1; }
+  80%, 100% { opacity: 0.3; }
+}
+
+.ai-loading-dot {
+  animation: ai-dots 1.4s infinite;
+}
+.ai-loading-dot:nth-child(2) { animation-delay: 0.2s; }
+.ai-loading-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* iPad 横屏双列布局辅助 */
+@media (min-width: 900px) and (min-height: 600px) and (orientation: landscape) {
+  .ipad-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .ipad-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+  }
+  .ipad-text-lg {
+    font-size: 1.1rem;
+  }
+  .ipad-content-width {
+    max-width: 960px;
+    margin: 0 auto;
+  }
+}
