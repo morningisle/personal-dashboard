@@ -1,8 +1,8 @@
-const CACHE_NAME = 'papagan-v1'
+const CACHE_NAME = 'papagan-v2'
 const urlsToCache = [
-  './',
-  './index.html',
-  './manifest.json'
+  '/personal-dashboard/',
+  '/personal-dashboard/index.html',
+  '/personal-dashboard/manifest.json'
 ]
 
 // 安装 Service Worker

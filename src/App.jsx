@@ -10,7 +10,7 @@ import Compass from './pages/Compass'
 function App() {
   return (
     <AIProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Home />} />

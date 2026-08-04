@@ -2,7 +2,7 @@
   "name": "Papagan 个人工作台",
   "short_name": "Papagan",
   "description": "学习 · 复盘 · 成长",
-  "start_url": "./",
+  "start_url": "/personal-dashboard/",
   "display": "standalone",
   "background_color": "#fdf2f8",
   "theme_color": "#ec4899",
