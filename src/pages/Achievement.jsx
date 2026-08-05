@@ -22,8 +22,8 @@ export default function Achievement() {
     <div className="space-y-4 pb-4">
       {/* Pet Companion */}
       <div className="clay-card p-5 bg-gradient-to-br from-pink-100 to-purple-100 text-center">
-        <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-pink-200 to-purple-200 flex items-center justify-center text-4xl clay-glow animate-float">
-          🦙
+        <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-pink-200 to-purple-200 flex items-center justify-center clay-glow animate-float overflow-hidden">
+          <img src="./icons/deft.jpg" alt="Deft" className="w-full h-full object-cover" />
         </div>
         <p className="text-base font-bold text-purple-700 mt-2">Deft</p>
         <p className="text-xs text-purple-500">Lv.{pet.level} · {pet.mood}</p>
