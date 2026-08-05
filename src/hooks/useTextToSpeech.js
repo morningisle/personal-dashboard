@@ -40,7 +40,7 @@ export function useTextToSpeech() {
 
     const utterance = new SpeechSynthesisUtterance(text)
     const lang = options.lang || 'zh-CN'
-    
+
     // 根据语言动态选择语音
     let voice = null
     if (lang.startsWith('ko')) {
@@ -53,7 +53,7 @@ export function useTextToSpeech() {
     } else {
       voice = selectedVoice || voices.find(v => v.lang.includes('zh')) || voices[0]
     }
-    
+
     utterance.voice = voice
     utterance.lang = lang
     utterance.rate = options.rate || 0.9
@@ -68,12 +68,14 @@ export function useTextToSpeech() {
     utterance.onend = () => {
       setIsSpeaking(false)
       setIsPaused(false)
+      if (options.onEnd) options.onEnd()
     }
 
     utterance.onerror = (e) => {
       console.error('TTS error:', e)
       setIsSpeaking(false)
       setIsPaused(false)
+      if (options.onEnd) options.onEnd()
     }
 
     utterance.onpause = () => setIsPaused(true)

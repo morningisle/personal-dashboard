@@ -1,15 +1,21 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
 // 浏览器语音识别 Hook
-export function useVoiceRecognition() {
+export function useVoiceRecognition(options = {}) {
+  const { onUtteranceComplete, continuous = false } = options
   const [isListening, setIsListening] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [interimTranscript, setInterimTranscript] = useState('')
   const [error, setError] = useState(null)
   const recognitionRef = useRef(null)
+  const silenceTimerRef = useRef(null)
+  const stoppedBySilenceRef = useRef(false)
+  const hasHadSpeechRef = useRef(false)
+  const transcriptRef = useRef('')
+  const onCompleteRef = useRef(onUtteranceComplete)
+  onCompleteRef.current = onUtteranceComplete
 
   useEffect(() => {
-    // 检查浏览器支持
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) {
       setError('当前浏览器不支持语音识别，请使用 Chrome 或 Edge')
@@ -17,7 +23,7 @@ export function useVoiceRecognition() {
     }
 
     const recognition = new SpeechRecognition()
-    recognition.continuous = true
+    recognition.continuous = continuous
     recognition.interimResults = true
     recognition.lang = 'zh-CN'
 
@@ -32,10 +38,27 @@ export function useVoiceRecognition() {
           interim += result[0].transcript
         }
       }
+
       if (final) {
-        setTranscript(prev => prev + final)
+        transcriptRef.current += final
+        setTranscript(transcriptRef.current)
       }
       setInterimTranscript(interim)
+
+      if (final || interim.trim()) {
+        hasHadSpeechRef.current = true
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current)
+          silenceTimerRef.current = null
+        }
+      }
+
+      if (hasHadSpeechRef.current && !interim.trim() && !final && !silenceTimerRef.current) {
+        silenceTimerRef.current = setTimeout(() => {
+          stoppedBySilenceRef.current = true
+          recognition.stop()
+        }, 1200)
+      }
     }
 
     recognition.onerror = (event) => {
@@ -46,22 +69,33 @@ export function useVoiceRecognition() {
 
     recognition.onend = () => {
       setIsListening(false)
+      if (stoppedBySilenceRef.current) {
+        stoppedBySilenceRef.current = false
+        const text = transcriptRef.current.trim()
+        if (text && onCompleteRef.current) {
+          onCompleteRef.current(text)
+        }
+      }
     }
 
     recognitionRef.current = recognition
 
     return () => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
       if (recognitionRef.current) {
         recognitionRef.current.abort()
       }
     }
-  }, [])
+  }, [continuous])
 
   const startListening = useCallback(() => {
     if (!recognitionRef.current) return
     setError(null)
+    transcriptRef.current = ''
     setTranscript('')
     setInterimTranscript('')
+    hasHadSpeechRef.current = false
+    stoppedBySilenceRef.current = false
     try {
       recognitionRef.current.start()
       setIsListening(true)
@@ -72,11 +106,16 @@ export function useVoiceRecognition() {
 
   const stopListening = useCallback(() => {
     if (!recognitionRef.current) return
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current)
+      silenceTimerRef.current = null
+    }
     recognitionRef.current.stop()
     setIsListening(false)
   }, [])
 
   const resetTranscript = useCallback(() => {
+    transcriptRef.current = ''
     setTranscript('')
     setInterimTranscript('')
   }, [])

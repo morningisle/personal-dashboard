@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useVoiceRecognition } from '../hooks/useVoiceRecognition'
 import { useTextToSpeech } from '../hooks/useTextToSpeech'
 import { useCompassStore } from '../hooks/useCompassStore'
@@ -45,21 +45,96 @@ export default function Home() {
   const [userInput, setUserInput] = useState('')
   const [showReport, setShowReport] = useState(false)
   const [voiceMode, setVoiceMode] = useState(false) // 语音模式
+  const [callPhase, setCallPhase] = useState('idle') // idle | listening | thinking | speaking
   const [aiReport, setAiReport] = useState('')
   const [reportLoading, setReportLoading] = useState(false)
   const [detectedTask, setDetectedTask] = useState(null)
   const [taskAdded, setTaskAdded] = useState(false)
   const [showReportDetail, setShowReportDetail] = useState(false)
   const chatEndRef = useRef(null)
+  const callLoopRef = useRef(false)
+  const processingRef = useRef(false)
+  const voiceModeRef = useRef(false)
+  const chatStepRef = useRef(0)
+  const chatMessagesRef = useRef([])
 
-  // 语音识别
-  const voiceRecognition = useVoiceRecognition()
   // 语音合成
   const tts = useTextToSpeech()
   // 罗盘数据
   const compass = useCompassStore()
   // 全局 AI
   const ai = useAI()
+
+  // 同步 ref
+  useEffect(() => { voiceModeRef.current = voiceMode }, [voiceMode])
+  useEffect(() => { chatStepRef.current = chatStep }, [chatStep])
+  useEffect(() => { chatMessagesRef.current = chatMessages }, [chatMessages])
+
+  const handleVoiceUtterance = useCallback(async (text) => {
+    if (processingRef.current || !callLoopRef.current) return
+    processingRef.current = true
+    setCallPhase('thinking')
+
+    const userMsg = { role: 'user', text }
+    const currentMsgs = chatMessagesRef.current
+    setChatMessages(prev => [...prev, userMsg])
+    setCallPhase('speaking')
+
+    const step = chatStepRef.current
+    if (step < aiQuestions.length - 1) {
+      setChatStep(prev => prev + 1)
+      let nextQuestion = aiQuestions[step + 1]
+      if (ai.isConfigured) {
+        const conversationSoFar = [...currentMsgs, userMsg].map(m => `${m.role}: ${m.text}`).join('\n')
+        try {
+          const nextQ = await ai.chat([
+            { role: 'system', content: '你是一个每日复盘引导者。根据用户的回答，提出下一个引导性问题。问题要简短、具体、有温度。只输出问题本身，不要其他内容。' },
+            { role: 'user', content: `对话记录：\n${conversationSoFar}\n\n预设问题池：${aiQuestions.join('、')}\n\n请基于用户刚才的回答，提出下一个问题。可以参照预设问题池，但最好根据用户的回答灵活调整。` }
+          ])
+          if (nextQ) nextQuestion = nextQ
+        } catch (e) {}
+      }
+
+      setChatMessages(prev => [...prev, { role: 'ai', text: nextQuestion }])
+      processingRef.current = false
+      setCallPhase('idle')
+
+      if (callLoopRef.current && voiceModeRef.current) {
+        tts.speak(nextQuestion, {
+          onEnd: () => {
+            setTimeout(() => {
+              if (callLoopRef.current && voiceModeRef.current) {
+                setCallPhase('listening')
+                voiceRecognitionInternal.startListening()
+              }
+            }, 300)
+          }
+        })
+      }
+    } else {
+      setShowReport(true)
+      setDetectedTask(detectTaskFromConversation([...currentMsgs, userMsg]))
+      setTaskAdded(false)
+      setCallPhase('idle')
+      processingRef.current = false
+      callLoopRef.current = false
+      if (ai.isConfigured) {
+        generateAiReport([...currentMsgs, userMsg])
+        const doneText = '好的，复盘完成！我正在为你生成今天的复盘报告。'
+        setChatMessages(prev => [...prev, { role: 'ai', text: doneText }])
+        if (voiceModeRef.current) tts.speak(doneText)
+      }
+    }
+  }, [ai, tts])
+
+  // 语音识别
+  const voiceRecognitionInternal = useVoiceRecognition({
+    onUtteranceComplete: (text) => {
+      handleVoiceUtterance(text)
+    },
+    continuous: false,
+  })
+  const voiceRecognition = voiceRecognitionInternal
 
   // 今日有进度推进的任务
   const todayStr = new Date().toISOString().slice(0, 10)
@@ -215,24 +290,51 @@ export default function Home() {
   const startChat = () => {
     setShowAiChat(true)
     setChatStep(0)
+    chatStepRef.current = 0
+    chatMessagesRef.current = [{ role: 'ai', text: aiQuestions[0] }]
     setChatMessages([{ role: 'ai', text: aiQuestions[0] }])
     setShowReport(false)
     setVoiceMode(false)
+    voiceModeRef.current = false
     setAiReport('')
     setDetectedTask(null)
     setTaskAdded(false)
-    // 语音模式下朗读第一个问题
-    setTimeout(() => {
-      if (voiceMode) tts.speak(aiQuestions[0])
-    }, 300)
+    setCallPhase('idle')
+    callLoopRef.current = false
+    processingRef.current = false
   }
 
-  // 语音识别自动发送
-  useEffect(() => {
-    if (voiceMode && voiceRecognition.transcript && !voiceRecognition.isListening) {
-      setUserInput(voiceRecognition.transcript)
+  const handleVoiceToggle = () => {
+    const newVoiceMode = !voiceMode
+    setVoiceMode(newVoiceMode)
+    voiceModeRef.current = newVoiceMode
+    if (newVoiceMode) {
+      // 开启语音模式：启动通话循环
+      callLoopRef.current = true
+      setCallPhase('speaking')
+      setChatMessages(prev => prev.map(m => m))
+      // 朗读当前 AI 消息后监听
+      const lastMsg = chatMessagesRef.current[chatMessagesRef.current.length - 1]
+      if (lastMsg?.role === 'ai') {
+        tts.speak(lastMsg.text, {
+          onEnd: () => {
+            setTimeout(() => {
+              if (callLoopRef.current && voiceModeRef.current) {
+                setCallPhase('listening')
+                voiceRecognitionInternal.startListening()
+              }
+            }, 300)
+          }
+        })
+      }
+    } else {
+      // 关闭语音模式
+      callLoopRef.current = false
+      setCallPhase('idle')
+      tts.stop()
+      voiceRecognitionInternal.stopListening()
     }
-  }, [voiceRecognition.transcript, voiceRecognition.isListening, voiceMode])
+  }
 
   // 滚动到底部
   useEffect(() => {
@@ -322,19 +424,14 @@ export default function Home() {
                 <span className="font-bold text-purple-700">AI 复盘助手</span>
                 <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse-soft" />
                 {voiceMode && <span className="text-xs text-purple-500 font-medium">🎙 语音模式</span>}
+                {callPhase === 'listening' && <span className="text-xs text-green-500 font-medium animate-pulse-soft">正在聆听...</span>}
+                {callPhase === 'thinking' && <span className="text-xs text-amber-500 font-medium">思考中...</span>}
+                {callPhase === 'speaking' && <span className="text-xs text-blue-500 font-medium">AI 回复中...</span>}
               </div>
               <div className="flex items-center gap-2">
                 {/* 语音模式切换 */}
                 <button
-                  onClick={() => {
-                    setVoiceMode(!voiceMode)
-                    if (!voiceMode) {
-                      tts.speak('语音模式已开启，你可以直接跟我说话')
-                    } else {
-                      tts.stop()
-                      voiceRecognition.stopListening()
-                    }
-                  }}
+                  onClick={handleVoiceToggle}
                   className={`w-8 h-8 clay-btn flex items-center justify-center text-sm font-bold transition-all ${
                     voiceMode ? 'bg-gradient-to-br from-green-300 to-emerald-300 text-green-700' : 'bg-purple-200 text-purple-600'
                   }`}
@@ -345,8 +442,10 @@ export default function Home() {
                 <button
                   onClick={() => {
                     setShowAiChat(false)
+                    callLoopRef.current = false
+                    setCallPhase('idle')
                     tts.stop()
-                    voiceRecognition.stopListening()
+                    voiceRecognitionInternal.stopListening()
                   }}
                   className="w-8 h-8 clay-btn bg-purple-200 flex items-center justify-center text-purple-600 text-sm font-bold"
                 >
@@ -371,10 +470,10 @@ export default function Home() {
                 </div>
               ))}
               {/* 语音识别实时显示 */}
-              {voiceMode && voiceRecognition.interimTranscript && (
+              {voiceMode && voiceRecognitionInternal.interimTranscript && (
                 <div className="flex justify-end">
                   <div className="max-w-[80%] p-3 text-sm bg-blue-100 text-blue-600 rounded-[20px] rounded-br-md clay-card opacity-60">
-                    {voiceRecognition.interimTranscript}
+                    {voiceRecognitionInternal.interimTranscript}
                   </div>
                 </div>
               )}
