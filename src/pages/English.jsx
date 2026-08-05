@@ -3,38 +3,11 @@ import { useTextToSpeech } from '../hooks/useTextToSpeech'
 import { useRecording } from '../hooks/useRecording'
 import { useAI } from '../contexts/AIContext'
 import ApiConfig from '../components/ApiConfig'
+import ieltsVocab from '../data/ielts_vocab.js'
+import listening179 from '../data/listening179.json'
+import reading538 from '../data/reading538.js'
 
 // ============ 数据 ============
-const dailyVocab = [
-  { word: 'resilience', phonetic: '/rɪˈzɪliəns/', meaning: '韧性；恢复力', example: 'Her resilience after losing the job was inspiring.', mastered: false },
-  { word: 'procrastinate', phonetic: '/prəˈkræstɪneɪt/', meaning: '拖延', example: 'Stop procrastinating and start studying!', mastered: false },
-  { word: 'articulate', phonetic: '/ɑːrˈtɪkjuleɪt/', meaning: '清楚表达', example: 'She can articulate her ideas very well.', mastered: false },
-  { word: 'compelling', phonetic: '/kəmˈpelɪŋ/', meaning: '引人入胜的', example: 'He made a compelling argument for change.', mastered: false },
-  { word: 'dilemma', phonetic: '/dɪˈlemə/', meaning: '困境；两难', example: "I'm facing a dilemma between two job offers.", mastered: false },
-  { word: 'elaborate', phonetic: '/ɪˈlæbərət/', meaning: '精心制作的；详细阐述', example: 'Could you elaborate on your proposal?', mastered: false },
-  { word: 'feasible', phonetic: '/ˈfiːzəbl/', meaning: '可行的', example: 'Is this plan feasible within our budget?', mastered: false },
-  { word: 'genuine', phonetic: '/ˈdʒenjuɪn/', meaning: '真诚的；真正的', example: 'She showed genuine concern for her colleagues.', mastered: false },
-]
-
-const listeningClips = [
-  {
-    title: 'TED Talk: The Power of Vulnerability',
-    source: 'TED · Brene Brown',
-    duration: '2:34',
-    difficulty: '⭐⭐⭐',
-    excerpt: "Vulnerability is not weakness; it's our most accurate measure of courage.",
-    excerptZh: '脆弱不是软弱，而是衡量勇气最准确的标准。',
-  },
-  {
-    title: 'Friends S01E01 Clip',
-    source: '美剧片段',
-    duration: '1:15',
-    difficulty: '⭐⭐',
-    excerpt: "Welcome to the real world. It sucks. You're gonna love it.",
-    excerptZh: '欢迎来到真实世界，它糟透了，但你会爱上它的。',
-  },
-]
-
 const reviewSchedule = [
   { day: '今天', count: 20, status: 'current' },
   { day: '1天后', count: 18, status: 'pending' },
@@ -69,6 +42,7 @@ export default function English() {
   const tabs = [
     { id: 'vocab', label: '词汇深度学', icon: '📖' },
     { id: 'listen', label: '听力三层练', icon: '🎧' },
+    { id: 'reading', label: '阅读538', icon: '📚' },
     { id: 'speak', label: 'AI口语', icon: '💬' },
     { id: 'write', label: '写作批改', icon: '✍️' },
     { id: 'review', label: '复习中心', icon: '🔄' },
@@ -76,7 +50,7 @@ export default function English() {
 
   // 首次使用且未配置时弹出设置
   useEffect(() => {
-    if (!ai.isConfigured && (activeTab === 'vocab' || activeTab === 'listen' || activeTab === 'speak' || activeTab === 'write')) {
+    if (!ai.isConfigured && (activeTab === 'vocab' || activeTab === 'listen' || activeTab === 'reading' || activeTab === 'speak' || activeTab === 'write')) {
       setShowApiConfig(true)
     }
   }, [activeTab])
@@ -129,9 +103,10 @@ export default function English() {
       {/* Tab Content */}
       {activeTab === 'vocab' && <VocabTab ai={ai} tts={tts} />}
       {activeTab === 'listen' && <ListenTab ai={ai} tts={tts} recorder={recorder} />}
+      {activeTab === 'reading' && <ReadingTab ai={ai} tts={tts} />}
       {activeTab === 'speak' && <SpeakTab ai={ai} tts={tts} recorder={recorder} />}
       {activeTab === 'write' && <WriteTab ai={ai} />}
-      {activeTab === 'review' && <ReviewTab ai={ai} tts={tts} />}
+      {activeTab === 'review' && <ReviewTab ai={ai} tts={tts} ieltsVocab={ieltsVocab} />}
 
       {/* API Config Modal */}
       <ApiConfig
@@ -144,73 +119,117 @@ export default function English() {
   )
 }
 
-// ============ Tab 1: 词汇深度学 ============
+// ============ Tab 1: 词汇深度学（22章雅思词库） ============
 function VocabTab({ ai, tts }) {
-  const [vocabIndex, setVocabIndex] = useState(0)
+  const [chapterIdx, setChapterIdx] = useState(0)
+  const [groupIdx, setGroupIdx] = useState(0)
+  const [wordIdx, setWordIdx] = useState(0)
   const [showAnswer, setShowAnswer] = useState(false)
-  const [aiPanel, setAiPanel] = useState(null) // 'compare' | 'sentence' | 'quiz' | 'collocation'
+  const [aiPanel, setAiPanel] = useState(null)
   const [aiResult, setAiResult] = useState('')
   const [userInput, setUserInput] = useState('')
+  const [mastered, setMastered] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ielts-vocab-mastered') || '{}') } catch { return {} }
+  })
 
-  const word = dailyVocab[vocabIndex]
+  const chapter = ieltsVocab[chapterIdx]
+  const groups = chapter.words
+  const group = groups[groupIdx] || []
+  const word = group[wordIdx] || { word: [''], pos: '', meaning: '', example: '', extra: '' }
+
+  const toggleMastered = (id) => {
+    const key = `${chapterIdx}-${groupIdx}-${id}`
+    const next = { ...mastered, [key]: !mastered[key] }
+    setMastered(next)
+    localStorage.setItem('ielts-vocab-mastered', JSON.stringify(next))
+  }
+
+  const wordText = Array.isArray(word.word) ? word.word[0] : word.word
 
   const handleAiAction = async (action) => {
     setAiPanel(action)
     setAiResult('')
-
     const prompts = {
-      compare: `Explain the differences between "${word.word}" and 2-3 similar words in Chinese and English. Give common collocations and natural examples. Keep it concise (under 200 words). Use Chinese for explanations.`,
-      collocation: `List the top 5 most common collocations for "${word.word}" with Chinese translations and example sentences. Format: collocation | 中文 | example sentence`,
-      sentence: `Give me a real-life scenario where I would naturally use "${word.word}". Then ask me to create a sentence using it. Wait for my response.`,
-      quiz: `Create 3 quick exercises about "${word.word}": 1 fill-in-the-blank, 1 translation (Chinese to English), 1 sentence creation. Keep answers hidden. Format clearly.`,
+      compare: `Explain the differences between "${wordText}" and 2-3 similar words in Chinese and English. Give common collocations and natural examples. Keep it concise (under 200 words). Use Chinese for explanations.`,
+      collocation: `List the top 5 most common collocations for "${wordText}" with Chinese translations and example sentences. Format: collocation | 中文 | example sentence`,
+      sentence: `Give me a real-life scenario where I would naturally use "${wordText}". Then ask me to create a sentence using it. Wait for my response.`,
+      quiz: `Create 3 quick exercises about "${wordText}": 1 fill-in-the-blank, 1 translation (Chinese to English), 1 sentence creation. Keep answers hidden. Format clearly.`,
     }
-
-    if (action === 'sentence') {
-      // 交互式，先获取场景
-      const result = await ai.chat([
-        { role: 'system', content: 'You are an English vocabulary teacher. Be concise and practical.' },
-        { role: 'user', content: prompts[action] }
-      ])
-      setAiResult(result || '加载失败')
-    } else {
-      const result = await ai.chat([
-        { role: 'system', content: 'You are an English vocabulary teacher for Chinese speakers. Be concise and practical.' },
-        { role: 'user', content: prompts[action] }
-      ])
-      setAiResult(result || '加载失败')
-    }
+    const result = await ai.chat([
+      { role: 'system', content: 'You are an English vocabulary teacher for Chinese speakers. Be concise and practical.' },
+      { role: 'user', content: prompts[action] }
+    ])
+    setAiResult(result || '加载失败')
   }
 
   const handleSentenceSubmit = async () => {
     if (!userInput.trim()) return
     const result = await ai.chat([
-      { role: 'system', content: 'You are an English vocabulary teacher. Evaluate the student\'s sentence.' },
-      { role: 'user', content: `The target word is "${word.word}". The student wrote: "${userInput}". Please: 1) Is the usage correct? 2) How natural does it sound (1-5)? 3) Suggest improvements. Use Chinese for feedback. Keep it under 100 words.` }
+      { role: 'system', content: "You are an English vocabulary teacher. Evaluate the student's sentence." },
+      { role: 'user', content: `The target word is "${wordText}". The student wrote: "${userInput}". Please: 1) Is the usage correct? 2) How natural does it sound (1-5)? 3) Suggest improvements. Use Chinese for feedback. Keep it under 100 words.` }
     ])
     setAiResult(prev => prev + '\n\n---\n📝 你的造句: ' + userInput + '\n\n' + result)
     setUserInput('')
   }
 
+  const totalWords = groups.reduce((s, g) => s + g.length, 0)
+  const masteredCount = Object.values(mastered).filter(Boolean).length
+  const progress = totalWords > 0 ? Math.round(masteredCount / totalWords * 100) : 0
+
   return (
     <div className="space-y-3">
-      {/* Flashcard */}
-      <div
-        className="clay-card p-6 bg-gradient-to-br from-indigo-100 to-purple-100 text-center cursor-pointer"
-        onClick={() => setShowAnswer(!showAnswer)}
-      >
-        <p className="text-2xl font-bold text-indigo-700">{word.word}</p>
-        <p className="text-sm text-indigo-500 mt-1">{word.phonetic}</p>
+      {/* Chapter Selector */}
+      <div className="clay-card p-4 bg-gradient-to-br from-indigo-100 to-purple-100">
+        <p className="text-xs font-bold text-indigo-700 mb-2">选择章节</p>
+        <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+          {ieltsVocab.map((ch, i) => (
+            <button
+              key={i}
+              onClick={() => { setChapterIdx(i); setGroupIdx(0); setWordIdx(0); setShowAnswer(false); setAiPanel(null) }}
+              className={`text-[9px] px-2 py-1 rounded-full font-bold transition-all ${chapterIdx === i ? 'bg-indigo-200 text-indigo-700 clay-tab-active' : 'bg-white/60 text-indigo-500'}`}
+            >
+              {ch.chapter_name}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-indigo-500 mt-2">{chapter.chapter_name} · {groups.length} 组 · {totalWords} 词 · 已掌握 {masteredCount} 词 ({progress}%)</p>
+      </div>
+
+      {/* Group Selector */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1">
+        {groups.map((g, i) => (
+          <button
+            key={i}
+            onClick={() => { setGroupIdx(i); setWordIdx(0); setShowAnswer(false); setAiPanel(null) }}
+            className={`text-[9px] px-2 py-1 rounded-full font-bold whitespace-nowrap transition-all ${groupIdx === i ? 'bg-purple-200 text-purple-700 clay-tab-active' : 'bg-white/50 text-gray-500'}`}
+          >
+            {i + 1}
+          </button>
+        ))}
+      </div>
+
+      {/* Word Card */}
+      <div className="clay-card p-6 bg-gradient-to-br from-indigo-100 to-purple-100 text-center cursor-pointer" onClick={() => setShowAnswer(!showAnswer)}>
+        {word.word.length > 1 && <p className="text-[10px] text-indigo-400 mb-2">同义词群：{word.word.join(' / ')}</p>}
+        <p className="text-2xl font-bold text-indigo-700">{wordText}</p>
+        <p className="text-xs text-indigo-500 mt-1">{word.pos}</p>
         {showAnswer ? (
           <div className="mt-4 space-y-2">
             <p className="text-base font-bold text-purple-700">{word.meaning}</p>
-            <p className="text-xs text-indigo-600 italic">"{word.example}"</p>
-            <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
-              <button
-                onClick={(e) => { e.stopPropagation(); tts.speak(word.word, { lang: 'en-US', rate: 0.8 }) }}
-                className="px-3 py-1 text-[10px] font-bold clay-btn bg-green-200 text-green-700"
-              >
-                {tts.isSpeaking ? '🔊 播放中...' : '🔊 发音'}
+            {word.example && <p className="text-xs text-indigo-600 italic">"{word.example}"</p>}
+            {word.extra && word.extra !== '-' && <p className="text-[10px] text-purple-500">{word.extra}</p>}
+            <div className="flex items-center justify-center gap-2 mt-2">
+              <button onClick={(e) => { e.stopPropagation(); tts.speak(wordText, { lang: 'en-US', rate: 0.8 }) }} className="px-3 py-1 text-[10px] font-bold clay-btn bg-green-200 text-green-700">
+                🔊 发音
               </button>
+              <button onClick={(e) => { e.stopPropagation(); toggleMastered(word.id) }} className={`px-3 py-1 text-[10px] font-bold clay-btn ${mastered[`${chapterIdx}-${groupIdx}-${word.id}`] ? 'bg-emerald-200 text-emerald-700' : 'bg-gray-200 text-gray-500'}`}>
+                {mastered[`${chapterIdx}-${groupIdx}-${word.id}`] ? '✅ 已掌握' : '⬜ 标记掌握'}
+              </button>
+              {word.word.length > 1 && word.word[1] && (
+                <button onClick={(e) => { e.stopPropagation(); tts.speak(word.word[1], { lang: 'en-US', rate: 0.8 }) }} className="px-3 py-1 text-[10px] font-bold clay-btn bg-green-200 text-green-700">
+                  🔊 变体
+                </button>
+              )}
             </div>
           </div>
         ) : (
@@ -220,110 +239,67 @@ function VocabTab({ ai, tts }) {
 
       {/* Navigation */}
       <div className="flex items-center justify-between">
-        <button onClick={() => { setVocabIndex(Math.max(0, vocabIndex - 1)); setShowAnswer(false); setAiPanel(null); setAiResult('') }} className="clay-btn w-10 h-10 bg-gradient-to-br from-blue-200 to-blue-300 flex items-center justify-center text-blue-700">←</button>
-        <span className="text-xs font-bold text-gray-500">{vocabIndex + 1} / {dailyVocab.length}</span>
-        <button onClick={() => { setVocabIndex(Math.min(dailyVocab.length - 1, vocabIndex + 1)); setShowAnswer(false); setAiPanel(null); setAiResult('') }} className="clay-btn w-10 h-10 bg-gradient-to-br from-blue-200 to-blue-300 flex items-center justify-center text-blue-700">→</button>
+        <button onClick={() => { if (wordIdx > 0) setWordIdx(wordIdx - 1); else if (groupIdx > 0) { setGroupIdx(groupIdx - 1); setWordIdx(groups[groupIdx - 1].length - 1) } setShowAnswer(false); setAiPanel(null); setAiResult('') }} className="clay-btn w-10 h-10 bg-gradient-to-br from-blue-200 to-blue-300 flex items-center justify-center text-blue-700">←</button>
+        <span className="text-xs font-bold text-gray-500">组 {groupIdx + 1}/{groups.length} · 词 {wordIdx + 1}/{group.length}</span>
+        <button onClick={() => { if (wordIdx < group.length - 1) setWordIdx(wordIdx + 1); else if (groupIdx < groups.length - 1) { setGroupIdx(groupIdx + 1); setWordIdx(0) } setShowAnswer(false); setAiPanel(null); setAiResult('') }} className="clay-btn w-10 h-10 bg-gradient-to-br from-blue-200 to-blue-300 flex items-center justify-center text-blue-700">→</button>
       </div>
 
       {/* AI Actions */}
       {showAnswer && (
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => handleAiAction('compare')} disabled={ai.isLoading} className="clay-btn py-2 bg-gradient-to-br from-amber-200 to-orange-200 text-xs font-bold text-amber-700 disabled:opacity-50">
-            🔍 近义词对比
-          </button>
-          <button onClick={() => handleAiAction('collocation')} disabled={ai.isLoading} className="clay-btn py-2 bg-gradient-to-br from-green-200 to-emerald-200 text-xs font-bold text-green-700 disabled:opacity-50">
-            📎 高频搭配
-          </button>
-          <button onClick={() => handleAiAction('sentence')} disabled={ai.isLoading} className="clay-btn py-2 bg-gradient-to-br from-blue-200 to-cyan-200 text-xs font-bold text-blue-700 disabled:opacity-50">
-            ✍️ 造句练习
-          </button>
-          <button onClick={() => handleAiAction('quiz')} disabled={ai.isLoading} className="clay-btn py-2 bg-gradient-to-br from-purple-200 to-pink-200 text-xs font-bold text-purple-700 disabled:opacity-50">
-            📋 词汇抽查
-          </button>
+          <button onClick={() => handleAiAction('compare')} disabled={ai.isLoading} className="clay-btn py-2 bg-gradient-to-br from-amber-200 to-orange-200 text-xs font-bold text-amber-700 disabled:opacity-50">🔍 近义词对比</button>
+          <button onClick={() => handleAiAction('collocation')} disabled={ai.isLoading} className="clay-btn py-2 bg-gradient-to-br from-green-200 to-emerald-200 text-xs font-bold text-green-700 disabled:opacity-50">📎 高频搭配</button>
+          <button onClick={() => handleAiAction('sentence')} disabled={ai.isLoading} className="clay-btn py-2 bg-gradient-to-br from-blue-200 to-cyan-200 text-xs font-bold text-blue-700 disabled:opacity-50">✍️ 造句练习</button>
+          <button onClick={() => handleAiAction('quiz')} disabled={ai.isLoading} className="clay-btn py-2 bg-gradient-to-br from-purple-200 to-pink-200 text-xs font-bold text-purple-700 disabled:opacity-50">📋 词汇抽查</button>
         </div>
       )}
 
-      {/* AI Result Panel */}
       {aiPanel && (
         <div className="clay-card p-4 bg-gradient-to-br from-white/90 to-blue-50 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-indigo-600">
-              {aiPanel === 'compare' && '🔍 近义词对比'}
-              {aiPanel === 'collocation' && '📎 高频搭配'}
-              {aiPanel === 'sentence' && '✍️ 造句练习'}
-              {aiPanel === 'quiz' && '📋 词汇抽查'}
-            </p>
+            <p className="text-xs font-bold text-indigo-600">{aiPanel === 'compare' && '🔍 近义词对比'}{aiPanel === 'collocation' && '📎 高频搭配'}{aiPanel === 'sentence' && '✍️ 造句练习'}{aiPanel === 'quiz' && '📋 词汇抽查'}</p>
             <button onClick={() => { setAiPanel(null); setAiResult(''); setUserInput('') }} className="text-xs text-gray-400">✕</button>
           </div>
-
           {ai.isLoading ? (
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <span className="animate-pulse">AI 思考中...</span>
-            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-500"><span className="animate-pulse">AI 思考中...</span></div>
           ) : (
             <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{aiResult}</div>
           )}
-
           {aiPanel === 'sentence' && aiResult && !ai.isLoading && (
             <div className="flex gap-2">
-              <input
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSentenceSubmit()}
-                placeholder={`用 "${word.word}" 造句...`}
-                className="flex-1 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
+              <input value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSentenceSubmit()} placeholder={`用 "${wordText}" 造句...`} className="flex-1 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
               <button onClick={handleSentenceSubmit} className="clay-btn px-3 py-2 bg-indigo-200 text-xs font-bold text-indigo-700">提交</button>
             </div>
           )}
         </div>
       )}
-
-      {/* Word List */}
-      <div className="clay-card p-4 bg-gradient-to-br from-white/80 to-blue-50 space-y-2">
-        <p className="text-xs font-bold text-blue-600 mb-2">📋 今日词汇列表</p>
-        {dailyVocab.map((v, i) => (
-          <button
-            key={i}
-            onClick={() => { setVocabIndex(i); setShowAnswer(false); setAiPanel(null); setAiResult('') }}
-            className={`w-full flex items-center justify-between p-2.5 rounded-2xl text-left transition-all ${vocabIndex === i ? 'bg-blue-100 clay-tab-active' : 'hover:bg-blue-50'}`}
-          >
-            <div className="flex items-center gap-2">
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${v.mastered ? 'bg-green-300 text-green-700' : 'bg-gray-200 text-gray-400'}`}>
-                {v.mastered ? '✓' : '·'}
-              </span>
-              <span className="text-sm font-bold text-gray-700">{v.word}</span>
-            </div>
-            <span className="text-xs text-gray-400">{v.meaning}</span>
-          </button>
-        ))}
-      </div>
     </div>
   )
 }
 
-// ============ Tab 2: 听力三层练 ============
+// ============ Tab 2: 听力三层练（179 雅思听力考点词） ============
 function ListenTab({ ai, tts, recorder }) {
-  const [clipIndex, setClipIndex] = useState(0)
-  const [layer, setLayer] = useState(1) // 1=理解 2=表达 3=复述
+  const [wordIndex, setWordIndex] = useState(0)
+  const [layer, setLayer] = useState(1)
   const [dictation, setDictation] = useState('')
   const [aiFeedback, setAiFeedback] = useState('')
+  const [showAnswer, setShowAnswer] = useState(false)
 
-  const clip = listeningClips[clipIndex]
+  const word = listening179[wordIndex]
 
   const handleCheckDictation = async () => {
     if (!dictation.trim()) return
     const result = await ai.chat([
       { role: 'system', content: 'You are a listening comprehension teacher.' },
-      { role: 'user', content: `The original text is: "${clip.excerpt}"\nThe student wrote: "${dictation}"\n\nCompare them. Show what the student got right (in green concept) and what they missed or got wrong (in red concept). Explain the key misses. Use Chinese for explanations. Be concise.` }
+      { role: 'user', content: `The target word is: "${word.word}" (meaning: ${word.meaning}). The student wrote: "${dictation}". Compare them. Show what the student got right and what they missed. Explain the key misses. Use Chinese. Be concise.` }
     ])
     setAiFeedback(result || '检查失败')
   }
 
-  const handleExtractExpressions = async () => {
+  const handleExtract = async () => {
     const result = await ai.chat([
       { role: 'system', content: 'You are an English expression teacher.' },
-      { role: 'user', content: `From this text: "${clip.excerpt}"\nExtract 3-5 high-frequency expressions worth learning. For each: 1) the expression 2) Chinese meaning 3) typical collocations 4) a new example sentence. Use Chinese for explanations. Keep it practical.` }
+      { role: 'user', content: `For the word "${word.word}" (meaning: ${word.meaning}), give 3 example sentences, 2 common collocations, and 1 synonym. Use Chinese for explanations.` }
     ])
     setAiFeedback(result || '提取失败')
   }
@@ -332,129 +308,136 @@ function ListenTab({ ai, tts, recorder }) {
     if (!dictation.trim()) return
     const result = await ai.chat([
       { role: 'system', content: 'You are an English speaking evaluation teacher.' },
-      { role: 'user', content: `The original text was: "${clip.excerpt}"\nThe student's retelling: "${dictation}"\n\nEvaluate: 1) Content accuracy (what did they capture?) 2) Key expressions used 3) What was missed? 4) Suggestions for improvement. Use Chinese. Be encouraging but honest.` }
+      { role: 'user', content: `The target word is "${word.word}" (meaning: ${word.meaning}). The student's retelling: "${dictation}". Evaluate: 1) Content accuracy 2) Key expressions used 3) Suggestions for improvement. Use Chinese.` }
     ])
     setAiFeedback(result || '评估失败')
   }
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-500 font-medium">🎬 今日原声切片</p>
+      <p className="text-xs text-gray-500 font-medium">🎧 雅思听力 179 考点词 · {wordIndex + 1}/{listening179.length}</p>
 
-      {/* Clip Card */}
       <div className="clay-card p-4 bg-gradient-to-br from-purple-100 to-pink-100 space-y-3">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold text-purple-700">{clip.title}</p>
-            <p className="text-xs text-purple-500">{clip.source} · {clip.duration} · {clip.difficulty}</p>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-purple-700">{word.word}</p>
+            <p className="text-xs text-purple-500">{word.type} · {word.meaning}</p>
+            <p className="text-[10px] text-purple-400">
+              同义替换：{word.replace.join(', ')}
+            </p>
           </div>
-          <button
-            onClick={() => tts.speak(clip.excerpt, { lang: 'en-US', rate: 0.85 })}
-            className={`clay-btn w-10 h-10 bg-gradient-to-br from-purple-300 to-pink-300 flex items-center justify-center text-white text-lg ${tts.isSpeaking ? 'scale-110' : ''}`}
-          >
-            {tts.isSpeaking ? '⏸' : '▶'}
-          </button>
+          <button onClick={() => tts.speak(word.word, { lang: 'en-US', rate: 0.75 })} className="clay-btn w-10 h-10 bg-gradient-to-br from-purple-300 to-pink-300 flex items-center justify-center text-white text-lg">▶</button>
         </div>
 
-        {/* Layer Tabs */}
         <div className="flex gap-2">
-          {[
-            { id: 1, label: '理解层', icon: '👂' },
-            { id: 2, label: '表达层', icon: '📎' },
-            { id: 3, label: '复述层', icon: '🗣' },
-          ].map(l => (
-            <button
-              key={l.id}
-              onClick={() => { setLayer(l.id); setAiFeedback(''); setDictation('') }}
-              className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all ${layer === l.id ? 'bg-purple-200 text-purple-700 clay-tab-active' : 'bg-white/50 text-gray-400'}`}
-            >
-              {l.icon} {l.label}
-            </button>
+          {[{ id: 1, label: '理解层', icon: '👂' }, { id: 2, label: '表达层', icon: '📎' }, { id: 3, label: '复述层', icon: '🗣' }].map(l => (
+            <button key={l.id} onClick={() => { setLayer(l.id); setAiFeedback(''); setDictation(''); setShowAnswer(false) }} className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all ${layer === l.id ? 'bg-purple-200 text-purple-700 clay-tab-active' : 'bg-white/50 text-gray-400'}`}>{l.icon} {l.label}</button>
           ))}
         </div>
       </div>
 
-      {/* Layer Content */}
       <div className="clay-card p-4 bg-gradient-to-br from-white/90 to-purple-50 space-y-3">
         {layer === 1 && (
           <>
-            <p className="text-xs font-bold text-indigo-600">👂 听写练习：听音频，写下你听到的内容</p>
-            <textarea
-              value={dictation}
-              onChange={(e) => setDictation(e.target.value)}
-              placeholder="听音频，在这里写下你听到的英文..."
-              className="w-full h-24 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            />
+            <p className="text-xs font-bold text-indigo-600">👂 听写：写下你听到的单词</p>
+            <textarea value={dictation} onChange={(e) => setDictation(e.target.value)} placeholder="听发音，写下你听到的单词..." className="w-full h-20 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             <div className="flex gap-2">
-              <button onClick={() => tts.speak(clip.excerpt, { lang: 'en-US', rate: 0.7 })} className="clay-btn px-3 py-2 bg-purple-200 text-xs font-bold text-purple-700">🔊 再听一次</button>
-              <button onClick={handleCheckDictation} disabled={ai.isLoading} className="clay-btn px-3 py-2 bg-indigo-200 text-xs font-bold text-indigo-700 disabled:opacity-50">
-                {ai.isLoading ? '检查中...' : '✅ 对比原文'}
-              </button>
+              <button onClick={() => tts.speak(word.word, { lang: 'en-US', rate: 0.65 })} className="clay-btn px-3 py-2 bg-purple-200 text-xs font-bold text-purple-700">🔊 慢速</button>
+              <button onClick={() => tts.speak(word.word, { lang: 'en-US', rate: 0.85 })} className="clay-btn px-3 py-2 bg-purple-200 text-xs font-bold text-purple-700">🔊 常速</button>
+              <button onClick={handleCheckDictation} disabled={ai.isLoading} className="clay-btn px-3 py-2 bg-indigo-200 text-xs font-bold text-indigo-700 disabled:opacity-50">{ai.isLoading ? '检查中...' : '✅ 对照'}</button>
             </div>
-            {/* 显示原文（点击后） */}
-            <details className="text-xs">
-              <summary className="cursor-pointer text-gray-500">查看原文</summary>
-              <p className="mt-2 text-indigo-700 italic">"{clip.excerpt}"</p>
-              <p className="text-gray-500">{clip.excerptZh}</p>
-            </details>
+            <details className="text-xs"><summary className="cursor-pointer text-gray-500">查看答案</summary><p className="mt-2 text-indigo-700 font-bold">{word.word}</p><p className="text-gray-500">{word.meaning}</p><p className="text-gray-400">同义替换：{word.replace.join(', ')}</p></details>
           </>
         )}
-
         {layer === 2 && (
           <>
-            <p className="text-xs font-bold text-indigo-600">📎 让 AI 提取高频表达，学习并造句</p>
-            <button onClick={handleExtractExpressions} disabled={ai.isLoading} className="clay-btn px-3 py-2 bg-green-200 text-xs font-bold text-green-700 disabled:opacity-50">
-              {ai.isLoading ? '提取中...' : '🔍 提取高频表达'}
-            </button>
-            <textarea
-              value={dictation}
-              onChange={(e) => setDictation(e.target.value)}
-              placeholder="选一个表达，用它造个句子..."
-              className="w-full h-20 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            />
+            <p className="text-xs font-bold text-indigo-600">📎 让 AI 帮你扩展表达</p>
+            <button onClick={handleExtract} disabled={ai.isLoading} className="clay-btn px-3 py-2 bg-green-200 text-xs font-bold text-green-700 disabled:opacity-50">{ai.isLoading ? '提取中...' : '🔍 扩展学习'}</button>
+            <textarea value={dictation} onChange={(e) => setDictation(e.target.value)} placeholder="用这个单词造个句子..." className="w-full h-20 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300" />
           </>
         )}
-
         {layer === 3 && (
           <>
-            <p className="text-xs font-bold text-indigo-600">🗣 不看原文，用你自己的话复述内容</p>
-            <textarea
-              value={dictation}
-              onChange={(e) => setDictation(e.target.value)}
-              placeholder="尝试用英文复述你听到的内容..."
-              className="w-full h-24 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            />
-            <button onClick={handleRetellCheck} disabled={ai.isLoading || !dictation.trim()} className="clay-btn px-3 py-2 bg-purple-200 text-xs font-bold text-purple-700 disabled:opacity-50">
-              {ai.isLoading ? '评估中...' : '✅ 评估复述'}
-            </button>
+            <p className="text-xs font-bold text-indigo-600">🗣 不看原文，用你自己的话解释这个单词</p>
+            <textarea value={dictation} onChange={(e) => setDictation(e.target.value)} placeholder="尝试用英文解释这个单词..." className="w-full h-20 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            <button onClick={handleRetellCheck} disabled={ai.isLoading || !dictation.trim()} className="clay-btn px-3 py-2 bg-purple-200 text-xs font-bold text-purple-700 disabled:opacity-50">{ai.isLoading ? '评估中...' : '✅ 评估复述'}</button>
           </>
         )}
-
-        {/* AI Feedback */}
-        {aiFeedback && (
-          <div className="clay-card p-3 bg-blue-50 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-            {aiFeedback}
-          </div>
-        )}
+        {aiFeedback && <div className="clay-card p-3 bg-blue-50 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{aiFeedback}</div>}
       </div>
 
-      {/* Clip Navigation */}
       <div className="flex gap-2">
-        {listeningClips.map((c, i) => (
-          <button
-            key={i}
-            onClick={() => { setClipIndex(i); setLayer(1); setAiFeedback(''); setDictation('') }}
-            className={`flex-1 clay-btn py-2 text-xs font-bold ${clipIndex === i ? 'bg-gradient-to-br from-purple-300 to-pink-300 text-white' : 'bg-white/60 text-gray-500'}`}
-          >
-            {c.title.split(':')[0]}
-          </button>
-        ))}
+        <button onClick={() => { setWordIndex(Math.max(0, wordIndex - 1)); setLayer(1); setAiFeedback(''); setDictation('') }} className="clay-btn w-10 h-10 bg-gradient-to-br from-blue-200 to-blue-300 flex items-center justify-center text-blue-700 text-lg">←</button>
+        <div className="flex-1 grid grid-cols-4 gap-1.5 overflow-y-auto max-h-24">
+          {listening179.map((w, i) => (
+            <button key={i} onClick={() => { setWordIndex(i); setLayer(1); setAiFeedback(''); setDictation('') }} className={`text-[9px] py-1 rounded font-bold ${wordIndex === i ? 'bg-purple-200 text-purple-700' : 'bg-white/50 text-gray-400'}`}>{w.word}</button>
+          ))}
+        </div>
+        <button onClick={() => { setWordIndex(Math.min(listening179.length - 1, wordIndex + 1)); setLayer(1); setAiFeedback(''); setDictation('') }} className="clay-btn w-10 h-10 bg-gradient-to-br from-blue-200 to-blue-300 flex items-center justify-center text-blue-700 text-lg">→</button>
       </div>
     </div>
   )
 }
 
-// ============ Tab 3: AI 口语陪练 ============
+// ============ Tab 3: 阅读 538 同义替换 ============
+function ReadingTab({ ai, tts }) {
+  const [catIdx, setCatIdx] = useState(0)
+  const [wordIdx, setWordIdx] = useState(0)
+  const [showAnswer, setShowAnswer] = useState(false)
+
+  const category = reading538[catIdx]
+  const word = category.words[wordIdx]
+
+  return (
+    <div className="space-y-3">
+      <div className="clay-card p-4 bg-gradient-to-br from-emerald-100 to-teal-100">
+        <p className="text-sm font-bold text-emerald-700">📚 阅读 538 考点词</p>
+        <p className="text-[10px] text-emerald-500 mt-1">雅思阅读同义替换 · 3 级分类</p>
+      </div>
+
+      <div className="flex gap-2">
+        {reading538.map((cat, i) => (
+          <button
+            key={i}
+            onClick={() => { setCatIdx(i); setWordIdx(0); setShowAnswer(false) }}
+            className={`flex-1 py-2 rounded-xl text-[10px] font-bold transition-all ${catIdx === i ? 'bg-emerald-200 text-emerald-700 clay-tab-active' : 'bg-white/50 text-gray-400'}`}
+          >
+            {cat.title}
+          </button>
+        ))}
+      </div>
+
+      <div className="clay-card p-5 bg-gradient-to-br from-emerald-100 to-teal-100 text-center">
+        <p className="text-xs text-emerald-600 font-medium mb-1">{category.define} · 要求：{category.require}</p>
+        {showAnswer ? (
+          <div className="space-y-3 mt-2">
+            <p className="text-2xl font-bold text-emerald-700">{word[0]}</p>
+            <p className="text-xs text-emerald-500">{word[1]?.join(', ')}</p>
+            <p className="text-base font-bold text-teal-700">{word[2]}</p>
+            <div className="flex flex-wrap gap-1.5 justify-center">
+              {word[3]?.map((s, i) => <span key={i} className="text-[10px] px-2 py-1 rounded-full bg-white/60 text-emerald-700 font-medium">{s}</span>)}
+            </div>
+            {word[4] && <p className="text-[10px] text-amber-600 italic">{word[4]}</p>}
+            <button onClick={(e) => { e.stopPropagation(); tts.speak(word[0], { lang: 'en-US', rate: 0.8 }) }} className="clay-btn px-3 py-1 text-[10px] font-bold bg-green-200 text-green-700">🔊 发音</button>
+          </div>
+        ) : (
+          <div className="py-6 cursor-pointer" onClick={() => setShowAnswer(true)}>
+            <p className="text-2xl font-bold text-emerald-700">{word[0]}</p>
+            <p className="text-xs text-emerald-400 mt-4">点击查看同义替换 👆</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <button onClick={() => { setWordIdx(Math.max(0, wordIdx - 1)); setShowAnswer(false) }} className="clay-btn w-10 h-10 bg-gradient-to-br from-blue-200 to-blue-300 flex items-center justify-center text-blue-700">←</button>
+        <span className="text-xs font-bold text-gray-500">{wordIdx + 1} / {category.words.length}</span>
+        <button onClick={() => { setWordIdx(Math.min(category.words.length - 1, wordIdx + 1)); setShowAnswer(false) }} className="clay-btn w-10 h-10 bg-gradient-to-br from-blue-200 to-blue-300 flex items-center justify-center text-blue-700">→</button>
+      </div>
+    </div>
+  )
+}
+
+// ============ Tab 4: AI 口语陪练 ============
 function SpeakTab({ ai, tts, recorder }) {
   const [scenario, setScenario] = useState(null)
   const [messages, setMessages] = useState([])
@@ -790,27 +773,26 @@ function WriteTab({ ai }) {
 }
 
 // ============ Tab 5: 复习中心 ============
-function ReviewTab({ ai, tts }) {
-  const [reviewMode, setReviewMode] = useState('schedule') // 'schedule' | 'flashcard' | 'errors'
+function ReviewTab({ ai, tts, ieltsVocab }) {
+  const [reviewMode, setReviewMode] = useState('schedule')
   const [flashcardIndex, setFlashcardIndex] = useState(0)
   const [flashcardFlipped, setFlashcardFlipped] = useState(false)
   const [aiQuiz, setAiQuiz] = useState('')
 
-  // Error collection from localStorage
   const [errors, setErrors] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('english-errors') || '[]')
-    } catch { return [] }
+    try { return JSON.parse(localStorage.getItem('english-errors') || '[]') } catch { return [] }
   })
 
-  const flashcards = dailyVocab.map(v => ({
-    front: v.word,
-    back: `${v.meaning}\n\n${v.example}`,
-    phonetic: v.phonetic,
-  }))
+  // Build flashcard list from all vocab words
+  const allWords = ieltsVocab ? ieltsVocab.flatMap(ch => ch.words.flatMap(g => g.map(w => ({
+    front: Array.isArray(w.word) ? w.word[0] : w.word,
+    back: `${w.meaning}\n\n${w.example || ''}`,
+  })))) : []
+
+  const flashcards = allWords.slice(0, 100)
 
   const generateAiQuiz = async () => {
-    const words = dailyVocab.map(v => v.word).join(', ')
+    const words = allWords.slice(0, 20).map(w => w.front).join(', ')
     const errorWords = errors.slice(0, 5).map(e => e.word).join(', ')
     const result = await ai.chat([
       { role: 'system', content: 'You are an English quiz generator.' },
